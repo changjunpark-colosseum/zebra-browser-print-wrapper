@@ -86,8 +86,7 @@ export default class ZebraBrowserPrintWrapper {
           // HTTPS 환경 → PNA 권한 문제일 가능성 높음
           return {
             connected: false,
-            message:
-              'Chrome 로컬 네트워크 접근 권한이 필요합니다. 브라우저에서 권한 요청 팝업을 확인해주세요. 팝업이 나타나지 않는다면 브라우저 캐시를 삭제하고 다시 시도해주세요.',
+            message: 'Chrome 로컬 네트워크 접근 권한이 필요합니다람쥐  캐시삭제.',
           };
         } else {
           // HTTP 환경 → BrowserPrint 미실행 가능성 높음
