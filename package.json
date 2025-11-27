@@ -6,6 +6,7 @@
     "types": "lib/index.d.ts",
     "scripts": {
         "build": "tsc",
+        "prepare": "npm run build",
         "format": "prettier --write \"src/**/*.ts\"",
         "lint": "tslint -p tsconfig.json",
         "test": "jest --config jestconfig.json"
@@ -13,7 +14,7 @@
     "dependencies": {},
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/lhilario/zebra-browser-print-wrapper.git"
+        "url": "git+https://github.com/changjunpark-colosseum/zebra-browser-print-wrapper.git"
     },
     "keywords": [
         "zpl",
@@ -30,7 +31,7 @@
     "bugs": {
         "url": "https://github.com/lhilario/zebra-browser-print-wrapper/issues"
     },
-    "homepage": "https://github.com/lhilario/zebra-browser-print-wrapper#readme",
+    "homepage": "https://github.com/changjunpark-colosseum/zebra-browser-print-wrapper#readme",
     "devDependencies": {
         "@types/jest": "^26.0.23",
         "jest": "^27.0.4",
