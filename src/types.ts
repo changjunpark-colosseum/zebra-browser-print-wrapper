@@ -7,3 +7,8 @@ export interface Device {
   manufacturer: string;
   version: number;
 }
+
+export interface ConnectionStatus {
+  connected: boolean;
+  message: string;
+}

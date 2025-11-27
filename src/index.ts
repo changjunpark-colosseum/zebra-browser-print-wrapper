@@ -1,16 +1,104 @@
 import { API_URL } from './constants';
 
-import { Device } from './types';
+import { Device, ConnectionStatus } from './types';
 
 export default class ZebraBrowserPrintWrapper {
   device: Device = {} as Device;
+  private connectionHealthy: boolean = false;
+  private lastHealthCheck: number = 0;
+  private readonly HEALTH_CHECK_INTERVAL = 30000; // 30초
 
-  getAvailablePrinters = async () => {
-    const config = {
+  /**
+   * BrowserPrint 서비스 연결 상태를 확인합니다.
+   * Chrome의 Private Network Access (PNA) 정책으로 인한 연결 문제를 미리 감지합니다.
+   */
+  checkConnection = async (): Promise<ConnectionStatus> => {
+    const endpoint = API_URL + 'available';
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const config: RequestInit = {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'text/plain;charset=UTF-8',
+        },
+        cache: 'no-store' as RequestCache,
+        signal: controller.signal,
+        // PNA 정책 대응을 위한 옵션
+        mode: 'cors',
+        credentials: 'omit',
+      };
+
+      const res = await fetch(endpoint, config);
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        this.connectionHealthy = true;
+        this.lastHealthCheck = Date.now();
+        return {
+          connected: true,
+          message: 'BrowserPrint 서비스에 정상적으로 연결되었습니다.',
+        };
+      }
+
+      return {
+        connected: false,
+        message: `연결 실패: ${res.status} ${res.statusText}`,
+      };
+    } catch (error: any) {
+      this.connectionHealthy = false;
+
+      // PNA 관련 에러 감지
+      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+        return {
+          connected: false,
+          message:
+            'Chrome 로컬 네트워크 접근 권한이 필요합니다. 브라우저에서 권한 요청 팝업을 확인해주세요. 팝업이 나타나지 않는다면 브라우저 캐시를 삭제하고 다시 시도해주세요.',
+        };
+      }
+
+      if (error.name === 'AbortError') {
+        return {
+          connected: false,
+          message:
+            'BrowserPrint 서비스에 연결할 수 없습니다. Zebra BrowserPrint가 설치되어 있고 실행 중인지 확인해주세요.',
+        };
+      }
+
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        connected: false,
+        message: `연결 오류: ${errorMessage}`,
+      };
+    }
+  };
+
+  /**
+   * 주기적인 헬스체크를 통해 연결 상태를 유지합니다.
+   */
+  private shouldCheckHealth(): boolean {
+    return !this.connectionHealthy || Date.now() - this.lastHealthCheck > this.HEALTH_CHECK_INTERVAL;
+  }
+
+  getAvailablePrinters = async (): Promise<Device[]> => {
+    // 헬스체크 수행
+    if (this.shouldCheckHealth()) {
+      const healthCheck = await this.checkConnection();
+      if (!healthCheck.connected) {
+        throw new Error(healthCheck.message);
+      }
+    }
+
+    const config: RequestInit = {
       method: 'GET',
       headers: {
         'Content-Type': 'text/plain;charset=UTF-8',
       },
+      cache: 'no-store' as RequestCache,
+      mode: 'cors',
+      credentials: 'omit',
     };
 
     const endpoint = API_URL + 'available';
@@ -18,30 +106,62 @@ export default class ZebraBrowserPrintWrapper {
     try {
       const res = await fetch(endpoint, config);
 
+      if (!res.ok) {
+        throw new Error(`요청 실패: ${res.status} ${res.statusText}`);
+      }
+
       const data = await res.json();
 
       if (data && data !== undefined && data.printer && data.printer !== undefined && data.printer.length > 0) {
-        return data.printer;
+        this.connectionHealthy = true;
+        this.lastHealthCheck = Date.now();
+        return data.printer as Device[];
       }
 
-      return new Error('No printers available');
-    } catch (error) {
-      throw new Error(error);
+      throw new Error('사용 가능한 프린터가 없습니다');
+    } catch (error: any) {
+      this.connectionHealthy = false;
+
+      // PNA 관련 에러 감지
+      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+        throw new Error(
+          'Chrome 로컬 네트워크 접근 권한이 필요합니다. 브라우저 캐시를 삭제하거나 권한을 다시 허용해주세요.',
+        );
+      }
+
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(errorMessage);
     }
   };
 
   getDefaultPrinter = async (): Promise<Device> => {
-    const config = {
+    // 헬스체크 수행
+    if (this.shouldCheckHealth()) {
+      const healthCheck = await this.checkConnection();
+      if (!healthCheck.connected) {
+        throw new Error(healthCheck.message);
+      }
+    }
+
+    const config: RequestInit = {
       method: 'GET',
       headers: {
         'Content-Type': 'text/plain;charset=UTF-8',
       },
+      cache: 'no-store' as RequestCache,
+      mode: 'cors',
+      credentials: 'omit',
     };
 
     const endpoint = API_URL + 'default';
 
     try {
       const res = await fetch(endpoint, config);
+
+      if (!res.ok) {
+        throw new Error(`요청 실패: ${res.status} ${res.statusText}`);
+      }
+
       const data = await res.text();
 
       if (data && data !== undefined && typeof data !== 'object' && data.split('\n\t').length === 7) {
@@ -54,6 +174,9 @@ export default class ZebraBrowserPrintWrapper {
         const provider = this.cleanUpString(deviceRaw[5]);
         const manufacturer = this.cleanUpString(deviceRaw[6]);
 
+        this.connectionHealthy = true;
+        this.lastHealthCheck = Date.now();
+
         return {
           connection,
           deviceType,
@@ -65,9 +188,19 @@ export default class ZebraBrowserPrintWrapper {
         };
       }
 
-      throw new Error("There's no default printer");
-    } catch (error) {
-      throw new Error(error);
+      throw new Error('기본 프린터가 설정되어 있지 않습니다');
+    } catch (error: any) {
+      this.connectionHealthy = false;
+
+      // PNA 관련 에러 감지
+      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+        throw new Error(
+          'Chrome 로컬 네트워크 접근 권한이 필요합니다. 브라우저 캐시를 삭제하거나 권한을 다시 허용해주세요.',
+        );
+      }
+
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(errorMessage);
     }
   };
 
@@ -143,8 +276,13 @@ export default class ZebraBrowserPrintWrapper {
     };
   };
 
-  write = async (data: string) => {
+  write = async (data: string, retryWithFreshDevice = true): Promise<void> => {
     try {
+      // Ensure device is set before writing
+      if (!this.device || !this.device.uid) {
+        throw new Error('프린터가 설정되지 않았습니다. setPrinter()를 먼저 호출해주세요.');
+      }
+
       const endpoint = API_URL + 'write';
 
       const myData = {
@@ -152,49 +290,135 @@ export default class ZebraBrowserPrintWrapper {
         data,
       };
 
-      const config = {
+      const config: RequestInit = {
         method: 'POST',
         headers: {
           'Content-Type': 'text/plain;charset=UTF-8',
         },
         body: JSON.stringify(myData),
+        mode: 'cors',
+        credentials: 'omit',
       };
 
-      await fetch(endpoint, config);
-    } catch (error) {
-      throw new Error(error);
+      const res = await fetch(endpoint, config);
+
+      // If request fails and we haven't retried yet, refresh device info and retry
+      if (!res.ok && retryWithFreshDevice && this.device.name) {
+        try {
+          // Try to get fresh printer info by name
+          const availablePrinters = await this.getAvailablePrinters();
+          let freshDevice: Device | undefined;
+          for (let i = 0; i < availablePrinters.length; i++) {
+            if (availablePrinters[i].name === this.device.name) {
+              freshDevice = availablePrinters[i];
+              break;
+            }
+          }
+          if (freshDevice) {
+            this.setPrinter(freshDevice);
+            // Retry once with fresh device info
+            return this.write(data, false);
+          }
+        } catch (refreshError) {
+          // If refresh fails, throw original error
+        }
+      }
+
+      if (!res.ok) {
+        throw new Error(`쓰기 실패: ${res.status} ${res.statusText}`);
+      }
+
+      this.connectionHealthy = true;
+      this.lastHealthCheck = Date.now();
+    } catch (error: any) {
+      // PNA 관련 에러 감지
+      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+        this.connectionHealthy = false;
+        throw new Error(
+          'Chrome 로컬 네트워크 접근 권한이 필요합니다. 브라우저 캐시를 삭제하거나 권한을 다시 허용해주세요.',
+        );
+      }
+
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(errorMessage);
     }
   };
 
-  read = async () => {
+  read = async (retryWithFreshDevice = true): Promise<string> => {
     try {
+      // Ensure device is set before reading
+      if (!this.device || !this.device.uid) {
+        throw new Error('프린터가 설정되지 않았습니다. setPrinter()를 먼저 호출해주세요.');
+      }
+
       const endpoint = API_URL + 'read';
 
       const myData = {
         device: this.device,
       };
 
-      const config = {
+      const config: RequestInit = {
         method: 'POST',
         headers: {
           'Content-Type': 'text/plain;charset=UTF-8',
         },
         body: JSON.stringify(myData),
+        mode: 'cors',
+        credentials: 'omit',
       };
 
       const res = await fetch(endpoint, config);
+
+      // If request fails and we haven't retried yet, refresh device info and retry
+      if (!res.ok && retryWithFreshDevice && this.device.name) {
+        try {
+          // Try to get fresh printer info by name
+          const availablePrinters = await this.getAvailablePrinters();
+          let freshDevice: Device | undefined;
+          for (let i = 0; i < availablePrinters.length; i++) {
+            if (availablePrinters[i].name === this.device.name) {
+              freshDevice = availablePrinters[i];
+              break;
+            }
+          }
+          if (freshDevice) {
+            this.setPrinter(freshDevice);
+            // Retry once with fresh device info
+            return this.read(false);
+          }
+        } catch (refreshError) {
+          // If refresh fails, throw original error
+        }
+      }
+
+      if (!res.ok) {
+        throw new Error(`읽기 실패: ${res.status} ${res.statusText}`);
+      }
+
       const data = await res.text();
+      this.connectionHealthy = true;
+      this.lastHealthCheck = Date.now();
       return data;
-    } catch (error) {
-      throw new Error(error);
+    } catch (error: any) {
+      // PNA 관련 에러 감지
+      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+        this.connectionHealthy = false;
+        throw new Error(
+          'Chrome 로컬 네트워크 접근 권한이 필요합니다. 브라우저 캐시를 삭제하거나 권한을 다시 허용해주세요.',
+        );
+      }
+
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(errorMessage);
     }
   };
 
-  print = async (text: string) => {
+  print = async (text: string): Promise<void> => {
     try {
       await this.write(text);
     } catch (error) {
-      throw new Error(error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(errorMessage);
     }
   };
 }
