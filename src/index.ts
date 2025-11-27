@@ -1,6 +1,6 @@
 import { API_URL } from './constants';
 
-import { Device, ConnectionStatus } from './types';
+import { Device, ConnectionStatus, PrinterStatus, ZebraError, ZebraErrorCode } from './types';
 
 export default class ZebraBrowserPrintWrapper {
   device: Device = {} as Device;
@@ -110,7 +110,12 @@ export default class ZebraBrowserPrintWrapper {
         throw new Error(`요청 실패: ${res.status} ${res.statusText}`);
       }
 
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch (parseError) {
+        throw new Error('BrowserPrint 응답 형식이 올바르지 않습니다. BrowserPrint를 다시 시작해주세요.');
+      }
 
       if (data && data !== undefined && data.printer && data.printer !== undefined && data.printer.length > 0) {
         this.connectionHealthy = true;
@@ -118,7 +123,7 @@ export default class ZebraBrowserPrintWrapper {
         return data.printer as Device[];
       }
 
-      throw new Error('사용 가능한 프린터가 없습니다');
+      throw new Error('사용 가능한 프린터가 없습니다. 프린터가 연결되어 있고 전원이 켜져 있는지 확인해주세요.');
     } catch (error: any) {
       this.connectionHealthy = false;
 
@@ -164,31 +169,39 @@ export default class ZebraBrowserPrintWrapper {
 
       const data = await res.text();
 
+      if (!data || data.trim() === '') {
+        throw new Error('BrowserPrint로부터 응답을 받지 못했습니다. BrowserPrint가 정상 실행 중인지 확인해주세요.');
+      }
+
       if (data && data !== undefined && typeof data !== 'object' && data.split('\n\t').length === 7) {
         const deviceRaw = data.split('\n\t');
 
-        const name = this.cleanUpString(deviceRaw[1]);
-        const deviceType = this.cleanUpString(deviceRaw[2]);
-        const connection = this.cleanUpString(deviceRaw[3]);
-        const uid = this.cleanUpString(deviceRaw[4]);
-        const provider = this.cleanUpString(deviceRaw[5]);
-        const manufacturer = this.cleanUpString(deviceRaw[6]);
+        try {
+          const name = this.cleanUpString(deviceRaw[1]);
+          const deviceType = this.cleanUpString(deviceRaw[2]);
+          const connection = this.cleanUpString(deviceRaw[3]);
+          const uid = this.cleanUpString(deviceRaw[4]);
+          const provider = this.cleanUpString(deviceRaw[5]);
+          const manufacturer = this.cleanUpString(deviceRaw[6]);
 
-        this.connectionHealthy = true;
-        this.lastHealthCheck = Date.now();
+          this.connectionHealthy = true;
+          this.lastHealthCheck = Date.now();
 
-        return {
-          connection,
-          deviceType,
-          manufacturer,
-          name,
-          provider,
-          uid,
-          version: 0,
-        };
+          return {
+            connection,
+            deviceType,
+            manufacturer,
+            name,
+            provider,
+            uid,
+            version: 0,
+          };
+        } catch (parseError) {
+          throw new Error('프린터 정보 파싱 중 오류가 발생했습니다. BrowserPrint를 다시 시작해주세요.');
+        }
       }
 
-      throw new Error('기본 프린터가 설정되어 있지 않습니다');
+      throw new Error('기본 프린터가 설정되어 있지 않습니다. Windows에서 기본 프린터를 설정해주세요.');
     } catch (error: any) {
       this.connectionHealthy = false;
 
@@ -218,62 +231,90 @@ export default class ZebraBrowserPrintWrapper {
     return result;
   };
 
-  checkPrinterStatus = async () => {
-    await this.write('~HQES');
-    const result = await this.read();
-
-    const errors = [];
-    let isReadyToPrint = false;
-
-    const isError = result.charAt(70);
-    const media = result.charAt(88);
-    const head = result.charAt(87);
-    const pause = result.charAt(84);
-
-    isReadyToPrint = isError === '0';
-
-    switch (media) {
-      case '1':
-        errors.push('Paper out');
-        break;
-      case '2':
-        errors.push('Ribbon Out');
-        break;
-      case '4':
-        errors.push('Media Door Open');
-        break;
-      case '8':
-        errors.push('Cutter Fault');
-        break;
-      default:
-        break;
+  checkPrinterStatus = async (): Promise<PrinterStatus> => {
+    // 프린터 설정 확인
+    if (!this.device || !this.device.uid) {
+      throw new ZebraError(
+        '프린터가 설정되지 않았습니다. setPrinter()를 먼저 호출해주세요.',
+        ZebraErrorCode.PRINTER_NOT_SET,
+      );
     }
 
-    switch (head) {
-      case '1':
-        errors.push('Printhead Overheating');
-        break;
-      case '2':
-        errors.push('Motor Overheating');
-        break;
-      case '4':
-        errors.push('Printhead Fault');
-        break;
-      case '8':
-        errors.push('Incorrect Printhead');
-        break;
-      default:
-        break;
+    try {
+      await this.write('~HQES');
+      const result = await this.read();
+
+      // 응답 길이 검증
+      if (!result || result.length < 100) {
+        throw new Error('프린터 상태 응답이 올바르지 않습니다. 프린터가 온라인 상태인지 확인해주세요.');
+      }
+
+      const errors = [];
+      let isReadyToPrint = false;
+
+      const isError = result.charAt(70);
+      const media = result.charAt(88);
+      const head = result.charAt(87);
+      const pause = result.charAt(84);
+
+      isReadyToPrint = isError === '0';
+
+      switch (media) {
+        case '1':
+          errors.push('Paper out');
+          break;
+        case '2':
+          errors.push('Ribbon Out');
+          break;
+        case '4':
+          errors.push('Media Door Open');
+          break;
+        case '8':
+          errors.push('Cutter Fault');
+          break;
+        default:
+          break;
+      }
+
+      switch (head) {
+        case '1':
+          errors.push('Printhead Overheating');
+          break;
+        case '2':
+          errors.push('Motor Overheating');
+          break;
+        case '4':
+          errors.push('Printhead Fault');
+          break;
+        case '8':
+          errors.push('Incorrect Printhead');
+          break;
+        default:
+          break;
+      }
+
+      if (pause === '1') errors.push('Printer Paused');
+
+      if (!isReadyToPrint && errors.length === 0) errors.push('Error: Unknown Error');
+
+      return {
+        isReadyToPrint,
+        errors: errors.join(),
+      };
+    } catch (error: any) {
+      // write/read 에러는 이미 처리되어 던져짐
+      if (
+        error.message.includes('프린터가 설정되지') ||
+        error.message.includes('Chrome 로컬 네트워크') ||
+        error.message.includes('프린터 상태 응답')
+      ) {
+        throw error;
+      }
+
+      // 기타 예상치 못한 에러
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`프린터 상태 확인 중 오류 발생: ${errorMessage}`);
     }
-
-    if (pause === '1') errors.push('Printer Paused');
-
-    if (!isReadyToPrint && errors.length === 0) errors.push('Error: Unknown Error');
-
-    return {
-      isReadyToPrint,
-      errors: errors.join(),
-    };
   };
 
   write = async (data: string, retryWithFreshDevice = true): Promise<void> => {
@@ -324,6 +365,7 @@ export default class ZebraBrowserPrintWrapper {
         }
       }
 
+      // 프린트가 아예 연결되지 않은 경우
       if (!res.ok) {
         throw new Error(`쓰기 실패: ${res.status} ${res.statusText}`);
       }

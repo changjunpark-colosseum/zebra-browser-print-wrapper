@@ -1,4 +1,4 @@
-import { Device, ConnectionStatus } from './types';
+import { Device, ConnectionStatus, PrinterStatus } from './types';
 export default class ZebraBrowserPrintWrapper {
     device: Device;
     private connectionHealthy;
@@ -18,10 +18,7 @@ export default class ZebraBrowserPrintWrapper {
     setPrinter: (device: Device) => void;
     getPrinter: () => Device;
     cleanUpString: (str: string) => string;
-    checkPrinterStatus: () => Promise<{
-        isReadyToPrint: boolean;
-        errors: string;
-    }>;
+    checkPrinterStatus: () => Promise<PrinterStatus>;
     write: (data: string, retryWithFreshDevice?: boolean) => Promise<void>;
     read: (retryWithFreshDevice?: boolean) => Promise<string>;
     print: (text: string) => Promise<void>;
