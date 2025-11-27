@@ -50,21 +50,36 @@ export default class ZebraBrowserPrintWrapper {
     } catch (error: any) {
       this.connectionHealthy = false;
 
-      // PNA 관련 에러 감지
-      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-        return {
-          connected: false,
-          message:
-            'Chrome 로컬 네트워크 접근 권한이 필요합니다. 브라우저에서 권한 요청 팝업을 확인해주세요. 팝업이 나타나지 않는다면 브라우저 캐시를 삭제하고 다시 시도해주세요.',
-        };
-      }
-
+      // AbortError: 타임아웃 (BrowserPrint 미실행)
       if (error.name === 'AbortError') {
         return {
           connected: false,
           message:
             'BrowserPrint 서비스에 연결할 수 없습니다. Zebra BrowserPrint가 설치되어 있고 실행 중인지 확인해주세요.',
         };
+      }
+
+      // TypeError: Failed to fetch
+      // 여러 원인 가능: PNA 권한, BrowserPrint 미실행, 방화벽, 네트워크
+      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+        // HTTPS 환경인지 확인 (PNA 정책은 HTTPS에서만 적용)
+        const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+
+        if (isHttps) {
+          // HTTPS 환경 → PNA 권한 문제일 가능성 높음
+          return {
+            connected: false,
+            message:
+              'Chrome 로컬 네트워크 접근 권한이 필요합니다. 브라우저에서 권한 요청 팝업을 확인해주세요. 팝업이 나타나지 않는다면 브라우저 캐시를 삭제하고 다시 시도해주세요.',
+          };
+        } else {
+          // HTTP 환경 → BrowserPrint 미실행 가능성 높음
+          return {
+            connected: false,
+            message:
+              'BrowserPrint 서비스에 연결할 수 없습니다. Zebra BrowserPrint가 설치되어 있고 실행 중인지 확인해주세요.',
+          };
+        }
       }
 
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -127,11 +142,23 @@ export default class ZebraBrowserPrintWrapper {
     } catch (error: any) {
       this.connectionHealthy = false;
 
-      // PNA 관련 에러 감지
+      // TypeError: Failed to fetch 에러 처리
       if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-        throw new Error(
-          'Chrome 로컬 네트워크 접근 권한이 필요합니다. 브라우저 캐시를 삭제하거나 권한을 다시 허용해주세요.',
-        );
+        const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+
+        if (isHttps) {
+          throw new ZebraError(
+            'Chrome 로컬 네트워크 접근 권한이 필요합니다. 브라우저 캐시를 삭제하거나 권한을 다시 허용해주세요.',
+            ZebraErrorCode.PNA_PERMISSION_DENIED,
+            error,
+          );
+        } else {
+          throw new ZebraError(
+            'BrowserPrint 서비스에 연결할 수 없습니다. Zebra BrowserPrint가 설치되어 있고 실행 중인지 확인해주세요.',
+            ZebraErrorCode.BROWSERPRINT_NOT_RUNNING,
+            error,
+          );
+        }
       }
 
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -205,11 +232,23 @@ export default class ZebraBrowserPrintWrapper {
     } catch (error: any) {
       this.connectionHealthy = false;
 
-      // PNA 관련 에러 감지
+      // TypeError: Failed to fetch 에러 처리
       if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-        throw new Error(
-          'Chrome 로컬 네트워크 접근 권한이 필요합니다. 브라우저 캐시를 삭제하거나 권한을 다시 허용해주세요.',
-        );
+        const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+
+        if (isHttps) {
+          throw new ZebraError(
+            'Chrome 로컬 네트워크 접근 권한이 필요합니다. 브라우저 캐시를 삭제하거나 권한을 다시 허용해주세요.',
+            ZebraErrorCode.PNA_PERMISSION_DENIED,
+            error,
+          );
+        } else {
+          throw new ZebraError(
+            'BrowserPrint 서비스에 연결할 수 없습니다. Zebra BrowserPrint가 설치되어 있고 실행 중인지 확인해주세요.',
+            ZebraErrorCode.BROWSERPRINT_NOT_RUNNING,
+            error,
+          );
+        }
       }
 
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -373,12 +412,24 @@ export default class ZebraBrowserPrintWrapper {
       this.connectionHealthy = true;
       this.lastHealthCheck = Date.now();
     } catch (error: any) {
-      // PNA 관련 에러 감지
+      // TypeError: Failed to fetch 에러 처리
       if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
         this.connectionHealthy = false;
-        throw new Error(
-          'Chrome 로컬 네트워크 접근 권한이 필요합니다. 브라우저 캐시를 삭제하거나 권한을 다시 허용해주세요.',
-        );
+        const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+
+        if (isHttps) {
+          throw new ZebraError(
+            'Chrome 로컬 네트워크 접근 권한이 필요합니다. 브라우저 캐시를 삭제하거나 권한을 다시 허용해주세요.',
+            ZebraErrorCode.PNA_PERMISSION_DENIED,
+            error,
+          );
+        } else {
+          throw new ZebraError(
+            'BrowserPrint 서비스에 연결할 수 없습니다. Zebra BrowserPrint가 설치되어 있고 실행 중인지 확인해주세요.',
+            ZebraErrorCode.BROWSERPRINT_NOT_RUNNING,
+            error,
+          );
+        }
       }
 
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -442,12 +493,24 @@ export default class ZebraBrowserPrintWrapper {
       this.lastHealthCheck = Date.now();
       return data;
     } catch (error: any) {
-      // PNA 관련 에러 감지
+      // TypeError: Failed to fetch 에러 처리
       if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
         this.connectionHealthy = false;
-        throw new Error(
-          'Chrome 로컬 네트워크 접근 권한이 필요합니다. 브라우저 캐시를 삭제하거나 권한을 다시 허용해주세요.',
-        );
+        const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+
+        if (isHttps) {
+          throw new ZebraError(
+            'Chrome 로컬 네트워크 접근 권한이 필요합니다. 브라우저 캐시를 삭제하거나 권한을 다시 허용해주세요.',
+            ZebraErrorCode.PNA_PERMISSION_DENIED,
+            error,
+          );
+        } else {
+          throw new ZebraError(
+            'BrowserPrint 서비스에 연결할 수 없습니다. Zebra BrowserPrint가 설치되어 있고 실행 중인지 확인해주세요.',
+            ZebraErrorCode.BROWSERPRINT_NOT_RUNNING,
+            error,
+          );
+        }
       }
 
       const errorMessage = error instanceof Error ? error.message : String(error);
