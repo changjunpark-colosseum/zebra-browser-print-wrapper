@@ -407,7 +407,9 @@ export default class ZebraBrowserPrintWrapper {
 
       // 프린트가 아예 연결되지 않은 경우
       if (!res.ok) {
-        throw new Error(`쓰기 실패: ${res.status} ${res.statusText}`);
+        throw new Error(
+          `프린터 연결을 확인해주세요. 프린터가 온라인 상태이고 올바르게 연결되어 있는지 확인하세요. (상태: ${res.status} ${res.statusText})`,
+        );
       }
 
       this.connectionHealthy = true;
@@ -486,7 +488,9 @@ export default class ZebraBrowserPrintWrapper {
       }
 
       if (!res.ok) {
-        throw new Error(`읽기 실패: ${res.status} ${res.statusText}`);
+        throw new Error(
+          `프린터 연결을 확인해주세요. 프린터가 온라인 상태이고 올바르게 연결되어 있는지 확인하세요. (상태: ${res.status} ${res.statusText})`,
+        );
       }
 
       const data = await res.text();
