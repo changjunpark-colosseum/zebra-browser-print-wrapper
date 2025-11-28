@@ -14,7 +14,7 @@ export default class ZebraBrowserPrintWrapper {
    */
   checkConnection = async (): Promise<ConnectionStatus> => {
     const endpoint = API_URL + 'available';
-    console.log('connect check 시작');
+    console.log('[ZebraBrowserPrint] 연결 확인 시작:', endpoint);
 
     try {
       const controller = new AbortController();
@@ -38,6 +38,7 @@ export default class ZebraBrowserPrintWrapper {
       if (res.ok) {
         this.connectionHealthy = true;
         this.lastHealthCheck = Date.now();
+        console.log('[ZebraBrowserPrint] ✅ 연결 성공');
         return {
           connected: true,
           message: 'BrowserPrint 서비스에 정상적으로 연결되었습니다.',
@@ -49,24 +50,8 @@ export default class ZebraBrowserPrintWrapper {
         message: `연결 실패: ${res.status} ${res.statusText}`,
       };
     } catch (error: any) {
-      console.log('catch에서 걸림');
-      console.log(error);
+      console.error('[ZebraBrowserPrint] ❌ 연결 에러:', error);
       this.connectionHealthy = false;
-
-      console.log('------------');
-      console.log(error);
-
-      console.log('-----------');
-
-      console.log('error.name', error.name);
-      console.log('error.message', error.message);
-      console.log('error.stack', error.stack);
-      console.log('error.cause', error.cause);
-      console.log('error.prototype', error.prototype);
-      console.log('error.toString()', error.toString());
-      console.log('error.toJSON()', error.toJSON());
-      console.log('error.valueOf()', error.valueOf());
-      console.log('error.constructor', error.constructor);
       // AbortError: 타임아웃 (BrowserPrint 미실행)
       if (error.name === 'AbortError') {
         return {
